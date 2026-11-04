@@ -1,8 +1,22 @@
 // 💡 CHANGE THIS NUMBER TO CONTROL THE NUMBER OF FACES / IMAGES
 const TOTAL_IMAGES = 8; 
 
+// ==========================================
+// 💡 PARTICLE SYSTEM CONFIGURATION CONTROLS
+// ==========================================
+const PARTICLE_CONFIG = {
+  COUNT: 600,                        // Number of particles on screen
+  COLOR: 'rgba(255, 255, 255, 0.9)', // Particle color (grey) & transparency
+  MIN_SIZE: 0.2,                    // Minimum particle radius (px)
+  MAX_SIZE: 2.5,                    // Maximum particle radius (px)
+  BASE_SPEED: 0.6                   // Natural drift speed
+};
+
 let currentIndex = 0;
+let rotationStepCount = 0; // Continuous rotation counter
 let isFullscreen = false;
+let isInitialSpinning = true;
+let hasSpinned = false; // Scenario A Guard Flag
 
 // Zoom & Pan state for Image Mode
 let scale = 1;
@@ -28,7 +42,80 @@ function getZOffset() {
 
 let zOffset = getZOffset();
 
-// 1. Setup Gallery
+// ==========================================
+// 1. PARTICLE ENGINE WITH BOX MOTION PHYSICS
+// ==========================================
+const canvas = document.getElementById('particle-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+let airVelocityX = 0;
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+class Particle {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.x = Math.random() * canvas.width;
+    this.y = Math.random() * canvas.height;
+    this.size = Math.random() * (PARTICLE_CONFIG.MAX_SIZE - PARTICLE_CONFIG.MIN_SIZE) + PARTICLE_CONFIG.MIN_SIZE;
+    this.vx = (Math.random() - 0.5) * PARTICLE_CONFIG.BASE_SPEED;
+    this.vy = (Math.random() - 0.5) * PARTICLE_CONFIG.BASE_SPEED;
+  }
+
+  update() {
+    this.x += this.vx + airVelocityX;
+    this.y += this.vy;
+
+    if (this.x < 0) this.x = canvas.width;
+    if (this.x > canvas.width) this.x = 0;
+    if (this.y < 0) this.y = canvas.height;
+    if (this.y > canvas.height) this.y = 0;
+  }
+
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = PARTICLE_CONFIG.COLOR;
+    ctx.fill();
+  }
+}
+
+function initParticles() {
+  particles = [];
+  for (let i = 0; i < PARTICLE_CONFIG.COUNT; i++) {
+    particles.push(new Particle());
+  }
+}
+
+function animateParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  airVelocityX *= 0.95;
+
+  particles.forEach(p => {
+    p.update();
+    p.draw();
+  });
+  requestAnimationFrame(animateParticles);
+}
+
+initParticles();
+animateParticles();
+
+function pushParticles(force) {
+  airVelocityX = force;
+}
+
+// ==========================================
+// 2. SETUP & SCENARIO A: SINGLE ONE-SHOT INTRO SPIN
+// ==========================================
 function setupGallery() {
   box.innerHTML = '';
   dotsContainer.innerHTML = '';
@@ -54,6 +141,43 @@ function setupGallery() {
     dot.className = `dot ${i === 1 ? 'active' : ''}`;
     dotsContainer.appendChild(dot);
   }
+
+  runIntroSpin();
+}
+
+// Initial 2.5-Second Smooth Spin
+function runIntroSpin() {
+  if (hasSpinned) {
+    updateGallery();
+    return;
+  }
+  hasSpinned = true;
+  isInitialSpinning = true;
+
+  // 1. Lock starting position at 0 degrees instantly
+  box.style.transition = 'none';
+  box.style.transform = `translateZ(-${zOffset}px) rotateY(0deg)`;
+
+  // 2. Force DOM reflow to lock 0deg anchor frame
+  void box.offsetHeight;
+
+  // 3. Apply 2.5s transition curve
+  box.style.transition = 'transform 2.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
+  
+  // 4. Perform exactly -360 degrees (1 full rotation)
+  const introRotationAngle = -360;
+  box.style.transform = `translateZ(-${zOffset}px) rotateY(${introRotationAngle}deg)`;
+
+  pushParticles(-4.5);
+
+  setTimeout(() => {
+    // Lock the transform at -360deg with active Z-depth offset
+    box.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    rotationStepCount = TOTAL_IMAGES; // Maintains seamless rotation math
+    currentIndex = 0;
+
+    isInitialSpinning = false;
+  }, 2500);
 }
 
 setupGallery();
@@ -82,7 +206,6 @@ function applyImageTransform() {
   }
 }
 
-// Helper: Calculate distance between two touch points for pinch-zoom
 function getDistance(touches) {
   return Math.hypot(
     touches[0].clientX - touches[1].clientX,
@@ -90,34 +213,36 @@ function getDistance(touches) {
   );
 }
 
-// 2. Desktop Button Click Navigation
+// 3. Desktop Button Navigation Controls
 if (prevBtn && nextBtn) {
   prevBtn.addEventListener('click', () => {
-    if (currentIndex > 0) {
-      currentIndex--;
-      updateGallery(true, 'right');
-    }
+    if (isInitialSpinning) return;
+    rotationStepCount--;
+    currentIndex = (currentIndex - 1 + TOTAL_IMAGES) % TOTAL_IMAGES;
+    pushParticles(3.5);
+    updateGallery(true, 'right');
   });
 
   nextBtn.addEventListener('click', () => {
-    if (currentIndex < TOTAL_IMAGES - 1) {
-      currentIndex++;
-      updateGallery(true, 'left');
-    }
+    if (isInitialSpinning) return;
+    rotationStepCount++;
+    currentIndex = (currentIndex + 1) % TOTAL_IMAGES;
+    pushParticles(-3.5);
+    updateGallery(true, 'left');
   });
 }
 
-// 3. Touch & Mouse Events
+// 4. Touch & Mouse Event Handlers
 let startX = 0;
 let startY = 0;
 let startTime = 0;
 let isDragging = false;
 let lastTap = 0;
 
-// Mobile Touch Events
 document.addEventListener('touchstart', (e) => {
+  if (isInitialSpinning) return;
+
   if (e.touches.length === 2 && isFullscreen) {
-    // Pinch-Zoom Start
     startPinchDistance = getDistance(e.touches);
     initialScale = scale;
     return;
@@ -125,7 +250,6 @@ document.addEventListener('touchstart', (e) => {
 
   if (e.touches.length === 1) {
     if (isFullscreen && scale > 1) {
-      // Pan Start when zoomed in Image Mode
       isPanning = true;
       startPanX = e.touches[0].clientX - translateX;
       startPanY = e.touches[0].clientY - translateY;
@@ -138,22 +262,17 @@ document.addEventListener('touchstart', (e) => {
 document.addEventListener('touchmove', (e) => {
   if (isFullscreen) {
     if (e.touches.length === 2) {
-      // Mobile Pinch-Zoom
       e.preventDefault();
       const currentDistance = getDistance(e.touches);
       if (startPinchDistance > 0) {
         scale = Math.min(Math.max(1, initialScale * (currentDistance / startPinchDistance)), 4);
-        if (scale === 1) {
-          translateX = 0;
-          translateY = 0;
-        }
+        if (scale === 1) { translateX = 0; translateY = 0; }
         applyImageTransform();
       }
       return;
     }
 
     if (e.touches.length === 1 && isPanning && scale > 1) {
-      // Mobile Pan Image
       e.preventDefault();
       translateX = e.touches[0].clientX - startPanX;
       translateY = e.touches[0].clientY - startPanY;
@@ -164,18 +283,14 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 document.addEventListener('touchend', (e) => {
-  if (isPanning) {
-    isPanning = false;
-    return;
-  }
+  if (isPanning) { isPanning = false; return; }
   if (e.changedTouches.length === 1 && scale === 1) {
     handleEnd(e.changedTouches[0].clientX);
   }
 });
 
-// Laptop Mouse Drag & Pan Events
 document.addEventListener('mousedown', (e) => {
-  if (e.target === prevBtn || e.target === nextBtn) return;
+  if (isInitialSpinning || e.target === prevBtn || e.target === nextBtn) return;
   
   if (isFullscreen && scale > 1) {
     isPanning = true;
@@ -197,10 +312,7 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('mouseup', (e) => {
-  if (isPanning) {
-    isPanning = false;
-    return;
-  }
+  if (isPanning) { isPanning = false; return; }
   if (isDragging) {
     isDragging = false;
     handleEnd(e.clientX);
@@ -212,7 +324,6 @@ function handleStart(clientX, clientY) {
   startY = clientY;
   startTime = new Date().getTime();
 
-  // Double-tap or double-click detection
   const now = new Date().getTime();
   if (now - lastTap < 300 && now - lastTap > 0) {
     toggleFullscreen();
@@ -225,42 +336,46 @@ function handleEnd(clientX) {
   const timeDiff = new Date().getTime() - startTime;
   const velocity = Math.abs(diffX) / (timeDiff || 1);
 
-  if (Math.abs(diffX) > 40) {
-    if (diffX > 0 && currentIndex < TOTAL_IMAGES - 1) {
-      currentIndex++;
+  if (Math.abs(diffX) > 40 && !isFullscreen) {
+    pushParticles(diffX > 0 ? -3.5 * velocity : 3.5 * velocity);
+
+    if (diffX > 0) {
+      rotationStepCount++;
+      currentIndex = (currentIndex + 1) % TOTAL_IMAGES;
       updateGallery(velocity > 0.6, 'left');
-    } else if (diffX < 0 && currentIndex > 0) {
-      currentIndex--;
+    } else {
+      rotationStepCount--;
+      currentIndex = (currentIndex - 1 + TOTAL_IMAGES) % TOTAL_IMAGES;
       updateGallery(velocity > 0.6, 'right');
     }
   }
 }
 
-// Laptop Mouse Scroll Wheel Support (Zoom in Image Mode, Navigate in 3D Mode)
 document.addEventListener('wheel', (e) => {
+  if (isInitialSpinning) return;
+
   if (isFullscreen) {
     e.preventDefault();
-    // Laptop Mouse Wheel Zoom in Image Mode
     const delta = e.deltaY < 0 ? 0.15 : -0.15;
     scale = Math.min(Math.max(1, scale + delta), 4);
-    if (scale === 1) {
-      translateX = 0;
-      translateY = 0;
-    }
+    if (scale === 1) { translateX = 0; translateY = 0; }
     applyImageTransform();
   } else {
-    // 3D Box Mode Rotation
-    if (e.deltaY > 30 && currentIndex < TOTAL_IMAGES - 1) {
-      currentIndex++;
+    if (e.deltaY > 30) {
+      rotationStepCount++;
+      currentIndex = (currentIndex + 1) % TOTAL_IMAGES;
+      pushParticles(-3.0);
       updateGallery(false, 'left');
-    } else if (e.deltaY < -30 && currentIndex > 0) {
-      currentIndex--;
+    } else if (e.deltaY < -30) {
+      rotationStepCount--;
+      currentIndex = (currentIndex - 1 + TOTAL_IMAGES) % TOTAL_IMAGES;
+      pushParticles(3.0);
       updateGallery(false, 'right');
     }
   }
 }, { passive: false });
 
-// 4. Update Gallery
+// 5. Update 3D Gallery Box
 function updateGallery(isFastSwipe = false, direction = '') {
   resetZoomPan();
 
@@ -274,7 +389,7 @@ function updateGallery(isFastSwipe = false, direction = '') {
     });
   } else {
     const angleStep = 360 / TOTAL_IMAGES;
-    let targetAngle = currentIndex * -angleStep;
+    let targetAngle = rotationStepCount * -angleStep;
 
     let overshoot = 0;
     if (isFastSwipe) {
@@ -304,9 +419,7 @@ function updateGallery(isFastSwipe = false, direction = '') {
   }
 }
 
-updateGallery();
-
-// 5. Toggle Fullscreen Mode
+// 6. Toggle Fullscreen Mode
 function toggleFullscreen() {
   isFullscreen = !isFullscreen;
   box.classList.toggle('fullscreen', isFullscreen);
