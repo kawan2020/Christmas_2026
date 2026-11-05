@@ -5,15 +5,15 @@ const TOTAL_IMAGES = 8;
 // 💡 PARTICLE SYSTEM CONFIGURATION CONTROLS
 // ==========================================
 const PARTICLE_CONFIG = {
-  COUNT: 500,                        // Number of particles on screen
-  COLOR: 'rgba(255, 255, 255, 0.9)', // Particle color (grey) & transparency
+  COUNT: 600,                        // Number of particles on screen
+  COLOR: 'rgba(255, 254, 254, 0.9)', // Particle color (grey) & transparency
   MIN_SIZE: 0.3,                    // Minimum particle radius (px)
   MAX_SIZE: 2.5,                    // Maximum particle radius (px)
-  BASE_SPEED: 0.7                  // Natural drift speed
+  BASE_SPEED: 0.7                   // Natural drift speed
 };
 
 let currentIndex = 0;
-let rotationStepCount = 0; // Continuous rotation counter
+let rotationStepCount = 0; // Tracks rotation steps linearly
 let isFullscreen = false;
 let isInitialSpinning = true;
 let hasSpinned = false; // Scenario A Guard Flag
@@ -114,7 +114,7 @@ function pushParticles(force) {
 }
 
 // ==========================================
-// 2. SETUP & SCENARIO A: SINGLE ONE-SHOT INTRO SPIN
+// 2. SETUP & FIXED SINGLE-DIRECTION INTRO SPIN
 // ==========================================
 function setupGallery() {
   box.innerHTML = '';
@@ -145,7 +145,7 @@ function setupGallery() {
   runIntroSpin();
 }
 
-// Initial 2.5-Second Smooth Spin
+// Initial 2.5-Second Smooth Spin (Guaranteed Exactly 1 Turn, No Reverse Unwind)
 function runIntroSpin() {
   if (hasSpinned) {
     updateGallery();
@@ -154,27 +154,28 @@ function runIntroSpin() {
   hasSpinned = true;
   isInitialSpinning = true;
 
-  // 1. Lock starting position at 0 degrees instantly
+  // 1. Instantly set baseline starting position at -360 deg (1 full turn back) without transition
   box.style.transition = 'none';
-  box.style.transform = `translateZ(-${zOffset}px) rotateY(0deg)`;
+  box.style.transform = `translateZ(-${zOffset}px) rotateY(-360deg)`;
 
-  // 2. Force DOM reflow to lock 0deg anchor frame
+  // 2. FORCE BROWSER REFLOW (Locks the starting -360deg anchor frame)
   void box.offsetHeight;
 
-  // 3. Apply 2.5s transition curve
+  // 3. Apply smooth 2.5s cubic-bezier curve transition
   box.style.transition = 'transform 2.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
   
-  // 4. Perform exactly -360 degrees (1 full rotation)
-  const introRotationAngle = -360;
-  box.style.transform = `translateZ(-${zOffset}px) rotateY(${introRotationAngle}deg)`;
+  // 4. Spin smoothly forward to 0 degrees (image1 facing front)
+  box.style.transform = `translateZ(-${zOffset}px) rotateY(0deg)`;
 
-  pushParticles(-4.5);
+  pushParticles(-4.5); // Air push effect
 
   setTimeout(() => {
+    // 5. Transition to standard swipe animation speed, lock at image 1 (0deg)
     box.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-    rotationStepCount = TOTAL_IMAGES;
+    rotationStepCount = 0;
     currentIndex = 0;
 
+    updateGallery();
     isInitialSpinning = false;
   }, 2500);
 }
@@ -212,20 +213,20 @@ function getDistance(touches) {
   );
 }
 
-// 3. Desktop Button Navigation Controls
+// 3. Desktop Button Navigation Controls (Linear Boundaries)
 if (prevBtn && nextBtn) {
   prevBtn.addEventListener('click', () => {
-    if (isInitialSpinning) return;
+    if (isInitialSpinning || currentIndex <= 0) return;
     rotationStepCount--;
-    currentIndex = (currentIndex - 1 + TOTAL_IMAGES) % TOTAL_IMAGES;
+    currentIndex--;
     pushParticles(3.5);
     updateGallery(true, 'right');
   });
 
   nextBtn.addEventListener('click', () => {
-    if (isInitialSpinning) return;
+    if (isInitialSpinning || currentIndex >= TOTAL_IMAGES - 1) return;
     rotationStepCount++;
-    currentIndex = (currentIndex + 1) % TOTAL_IMAGES;
+    currentIndex++;
     pushParticles(-3.5);
     updateGallery(true, 'left');
   });
@@ -330,24 +331,24 @@ function handleStart(clientX, clientY) {
   lastTap = now;
 }
 
-// 💡 SWIPE NAVIGATION: Works in both 3D Box mode AND Full Page mode (at 1x zoom)
+// LINEAR BOUNDARY SWIPE LOGIC (1 -> 8 Only, No Loop)
 function handleEnd(clientX) {
   const diffX = startX - clientX;
   const timeDiff = new Date().getTime() - startTime;
   const velocity = Math.abs(diffX) / (timeDiff || 1);
 
   if (Math.abs(diffX) > 40) {
-    pushParticles(diffX > 0 ? -3.5 * velocity : 3.5 * velocity);
-
-    if (diffX > 0) {
-      // Swipe Left -> Next Image
+    if (diffX > 0 && currentIndex < TOTAL_IMAGES - 1) {
+      // Swipe Left -> Next Image (Blocked at Image 8)
+      pushParticles(-3.5 * velocity);
       rotationStepCount++;
-      currentIndex = (currentIndex + 1) % TOTAL_IMAGES;
+      currentIndex++;
       updateGallery(velocity > 0.6, 'left');
-    } else {
-      // Swipe Right -> Previous Image
+    } else if (diffX < 0 && currentIndex > 0) {
+      // Swipe Right -> Previous Image (Blocked at Image 1)
+      pushParticles(3.5 * velocity);
       rotationStepCount--;
-      currentIndex = (currentIndex - 1 + TOTAL_IMAGES) % TOTAL_IMAGES;
+      currentIndex--;
       updateGallery(velocity > 0.6, 'right');
     }
   }
@@ -363,14 +364,14 @@ document.addEventListener('wheel', (e) => {
     if (scale === 1) { translateX = 0; translateY = 0; }
     applyImageTransform();
   } else {
-    if (e.deltaY > 30) {
+    if (e.deltaY > 30 && currentIndex < TOTAL_IMAGES - 1) {
       rotationStepCount++;
-      currentIndex = (currentIndex + 1) % TOTAL_IMAGES;
+      currentIndex++;
       pushParticles(-3.0);
       updateGallery(false, 'left');
-    } else if (e.deltaY < -30) {
+    } else if (e.deltaY < -30 && currentIndex > 0) {
       rotationStepCount--;
-      currentIndex = (currentIndex - 1 + TOTAL_IMAGES) % TOTAL_IMAGES;
+      currentIndex--;
       pushParticles(3.0);
       updateGallery(false, 'right');
     }
@@ -384,7 +385,6 @@ function updateGallery(isFastSwipe = false, direction = '') {
   const slides = document.querySelectorAll('.slide');
 
   if (isFullscreen) {
-    // Full Page Mode: Show only the active slide full screen
     slides.forEach((slide, idx) => {
       slide.style.display = idx === currentIndex ? 'block' : 'none';
       slide.style.transform = 'none';
@@ -392,7 +392,6 @@ function updateGallery(isFastSwipe = false, direction = '') {
       if (img) img.style.transform = 'none';
     });
   } else {
-    // 3D Box Mode: Restore 3D face layout
     const angleStep = 360 / TOTAL_IMAGES;
 
     slides.forEach((slide, idx) => {
@@ -419,13 +418,13 @@ function updateGallery(isFastSwipe = false, direction = '') {
     }
   }
 
-  // Update Dots
+  // Update Dots Indicator
   const dotsList = document.querySelectorAll('.dot');
   dotsList.forEach((dot, index) => {
     dot.classList.toggle('active', index === currentIndex);
   });
 
-  // Header visibility
+  // Header Visibility
   if (currentIndex > 0 || isFullscreen) {
     header.classList.add('hidden');
   } else {
