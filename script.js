@@ -2,21 +2,30 @@
 const TOTAL_IMAGES = 8; 
 
 // ==========================================
+// 💡 AUDIO & SOUND CONFIGURATION CONTROLS
+// ==========================================
+const AUDIO_CONFIG = {
+  BACKGROUND_VOLUME: 0.007, // 💡 Background music volume (0.0 to 1.0)
+  EFFECT1_VOLUME: 0.02,    // 💡 Tap sound volume (0.0 to 1.0)
+  EFFECT2_VOLUME: 0.02   // 💡 Swipe sound volume (0.0 to 1.0)
+};
+
+// ==========================================
 // 💡 PARTICLE SYSTEM CONFIGURATION CONTROLS
 // ==========================================
 const PARTICLE_CONFIG = {
   COUNT: 600,                        // Number of particles on screen
-  COLOR: 'rgba(255, 254, 254, 0.9)', // Particle color (grey) & transparency
+  COLOR: 'rgba(255, 255, 255, 0.9)', // Particle color (grey) & transparency
   MIN_SIZE: 0.3,                    // Minimum particle radius (px)
   MAX_SIZE: 2.5,                    // Maximum particle radius (px)
   BASE_SPEED: 0.7                   // Natural drift speed
 };
 
 let currentIndex = 0;
-let rotationStepCount = 0; // Tracks rotation steps linearly
+let rotationStepCount = 0; 
 let isFullscreen = false;
 let isInitialSpinning = true;
-let hasSpinned = false; // Scenario A Guard Flag
+let hasSpinned = false; 
 
 // Zoom & Pan state for Image Mode
 let scale = 1;
@@ -33,6 +42,71 @@ const header = document.getElementById('main-header');
 const dotsContainer = document.getElementById('pagination-dots');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
+
+// Audio elements
+const bgMusic = document.getElementById('bg-music');
+const soundTap = document.getElementById('sound-tap');
+const soundSwipe = document.getElementById('sound-swipe');
+const audioToggleBtn = document.getElementById('audio-toggle-btn');
+const audioIcon = document.getElementById('audio-icon');
+
+let isMuted = false;
+let hasInteractedForAudio = false;
+
+// ==========================================
+// AUDIO SYSTEM & CONTROLS
+// ==========================================
+function initAudio() {
+  if (bgMusic) bgMusic.volume = AUDIO_CONFIG.BACKGROUND_VOLUME;
+  if (soundTap) soundTap.volume = AUDIO_CONFIG.EFFECT1_VOLUME;
+  if (soundSwipe) soundSwipe.volume = AUDIO_CONFIG.EFFECT2_VOLUME;
+
+  // Attempt autoplay immediately on load
+  attemptPlayMusic();
+}
+
+function attemptPlayMusic() {
+  if (bgMusic && !isMuted) {
+    bgMusic.play().then(() => {
+      hasInteractedForAudio = true;
+    }).catch(() => {
+      // Browser blocked autoplay; will start on first touch interaction
+      hasInteractedForAudio = false;
+    });
+  }
+}
+
+function playTapSound() {
+  if (isMuted || !soundTap) return;
+  soundTap.currentTime = 0;
+  soundTap.play().catch(() => {});
+}
+
+function playSwipeSound() {
+  if (isMuted || !soundSwipe) return;
+  soundSwipe.currentTime = 0;
+  soundSwipe.play().catch(() => {});
+}
+
+// Toggle Mute / Play Button
+if (audioToggleBtn) {
+  audioToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); // Stop click from triggering gallery zoom
+    isMuted = !isMuted;
+
+    if (isMuted) {
+      bgMusic.pause();
+      audioIcon.textContent = '🔇';
+      audioToggleBtn.classList.add('muted');
+      audioToggleBtn.classList.remove('playing');
+    } else {
+      bgMusic.play();
+      audioIcon.textContent = '🔊';
+      audioToggleBtn.classList.remove('muted');
+      audioToggleBtn.classList.add('playing');
+    }
+  });
+}
 
 function getZOffset() {
   const width = box.offsetWidth;
@@ -145,7 +219,6 @@ function setupGallery() {
   runIntroSpin();
 }
 
-// Initial 2.5-Second Smooth Spin (Guaranteed Exactly 1 Turn, No Reverse Unwind)
 function runIntroSpin() {
   if (hasSpinned) {
     updateGallery();
@@ -154,23 +227,17 @@ function runIntroSpin() {
   hasSpinned = true;
   isInitialSpinning = true;
 
-  // 1. Instantly set baseline starting position at -360 deg (1 full turn back) without transition
   box.style.transition = 'none';
   box.style.transform = `translateZ(-${zOffset}px) rotateY(-360deg)`;
 
-  // 2. FORCE BROWSER REFLOW (Locks the starting -360deg anchor frame)
   void box.offsetHeight;
 
-  // 3. Apply smooth 2.5s cubic-bezier curve transition
   box.style.transition = 'transform 2.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
-  
-  // 4. Spin smoothly forward to 0 degrees (image1 facing front)
   box.style.transform = `translateZ(-${zOffset}px) rotateY(0deg)`;
 
-  pushParticles(-4.5); // Air push effect
+  pushParticles(-4.5);
 
   setTimeout(() => {
-    // 5. Transition to standard swipe animation speed, lock at image 1 (0deg)
     box.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
     rotationStepCount = 0;
     currentIndex = 0;
@@ -181,12 +248,12 @@ function runIntroSpin() {
 }
 
 setupGallery();
+initAudio();
 
 window.addEventListener('resize', () => {
   if (!isFullscreen) setupGallery();
 });
 
-// Reset Zoom & Pan transforms
 function resetZoomPan() {
   scale = 1;
   translateX = 0;
@@ -213,10 +280,11 @@ function getDistance(touches) {
   );
 }
 
-// 3. Desktop Button Navigation Controls (Linear Boundaries)
+// 3. Desktop Button Navigation Controls
 if (prevBtn && nextBtn) {
   prevBtn.addEventListener('click', () => {
     if (isInitialSpinning || currentIndex <= 0) return;
+    playSwipeSound();
     rotationStepCount--;
     currentIndex--;
     pushParticles(3.5);
@@ -225,6 +293,7 @@ if (prevBtn && nextBtn) {
 
   nextBtn.addEventListener('click', () => {
     if (isInitialSpinning || currentIndex >= TOTAL_IMAGES - 1) return;
+    playSwipeSound();
     rotationStepCount++;
     currentIndex++;
     pushParticles(-3.5);
@@ -240,6 +309,11 @@ let isDragging = false;
 let lastTap = 0;
 
 document.addEventListener('touchstart', (e) => {
+  // Unlock autoplay on first physical interaction if blocked by browser
+  if (!hasInteractedForAudio) {
+    attemptPlayMusic();
+  }
+
   if (isInitialSpinning) return;
 
   if (e.touches.length === 2 && isFullscreen) {
@@ -290,7 +364,11 @@ document.addEventListener('touchend', (e) => {
 });
 
 document.addEventListener('mousedown', (e) => {
-  if (isInitialSpinning || e.target === prevBtn || e.target === nextBtn) return;
+  if (!hasInteractedForAudio) {
+    attemptPlayMusic();
+  }
+
+  if (isInitialSpinning || e.target === prevBtn || e.target === nextBtn || e.target.closest('#audio-toggle-btn')) return;
   
   if (isFullscreen && scale > 1) {
     isPanning = true;
@@ -312,7 +390,10 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('mouseup', (e) => {
-  if (isPanning) { isPanning = false; return; }
+  if (isPanning) {
+    isPanning = false;
+    return;
+  }
   if (isDragging) {
     isDragging = false;
     handleEnd(e.clientX);
@@ -327,11 +408,14 @@ function handleStart(clientX, clientY) {
   const now = new Date().getTime();
   if (now - lastTap < 300 && now - lastTap > 0) {
     toggleFullscreen();
+  } else {
+    // Single tap sound effect
+    playTapSound();
   }
   lastTap = now;
 }
 
-// LINEAR BOUNDARY SWIPE LOGIC (1 -> 8 Only, No Loop)
+// LINEAR BOUNDARY SWIPE LOGIC WITH SWIPE SOUND EFFECT
 function handleEnd(clientX) {
   const diffX = startX - clientX;
   const timeDiff = new Date().getTime() - startTime;
@@ -339,13 +423,15 @@ function handleEnd(clientX) {
 
   if (Math.abs(diffX) > 40) {
     if (diffX > 0 && currentIndex < TOTAL_IMAGES - 1) {
-      // Swipe Left -> Next Image (Blocked at Image 8)
+      // Swipe Left -> Next Image
+      playSwipeSound();
       pushParticles(-3.5 * velocity);
       rotationStepCount++;
       currentIndex++;
       updateGallery(velocity > 0.6, 'left');
     } else if (diffX < 0 && currentIndex > 0) {
-      // Swipe Right -> Previous Image (Blocked at Image 1)
+      // Swipe Right -> Previous Image
+      playSwipeSound();
       pushParticles(3.5 * velocity);
       rotationStepCount--;
       currentIndex--;
@@ -365,11 +451,13 @@ document.addEventListener('wheel', (e) => {
     applyImageTransform();
   } else {
     if (e.deltaY > 30 && currentIndex < TOTAL_IMAGES - 1) {
+      playSwipeSound();
       rotationStepCount++;
       currentIndex++;
       pushParticles(-3.0);
       updateGallery(false, 'left');
     } else if (e.deltaY < -30 && currentIndex > 0) {
+      playSwipeSound();
       rotationStepCount--;
       currentIndex--;
       pushParticles(3.0);

@@ -28,7 +28,7 @@
     <p>📱 Please rotate your device to portrait mode for the best viewing experience.</p>
   </div>
 
-  <!-- Header (Only visible on page 1) -->
+  <!-- Header -->
   <header id="main-header">
     <h2>Merry Christmas</h2>
     <p>🎄🎄🎅🎄🎄</p>
@@ -36,7 +36,6 @@
 
   <!-- 3D Scene Viewport -->
   <div class="scene">
-    <!-- Desktop Navigation Arrows -->
     <button class="nav-arrow prev-arrow" id="prev-btn" aria-label="Previous Image">&#10094;</button>
     
     <div class="box" id="box">
@@ -50,6 +49,16 @@
   <div class="pagination-dots" id="pagination-dots">
     <!-- Dots injected via JavaScript -->
   </div>
+
+  <!-- Audio Elements -->
+  <audio id="bg-music" src="music/background.mp3" loop preload="auto"></audio>
+  <audio id="sound-tap" src="music/effect1.mp3" preload="auto"></audio>
+  <audio id="sound-swipe" src="music/effect2.mp3" preload="auto"></audio>
+
+  <!-- Bottom-Right Mute/Play Toggle Button -->
+  <button id="audio-toggle-btn" class="audio-btn playing" aria-label="Toggle Audio">
+    <span id="audio-icon">🔊</span>
+  </button>
 
   <script src="script.js"></script>
 </body>
