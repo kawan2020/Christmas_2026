@@ -5,7 +5,7 @@ const TOTAL_IMAGES = 8;
 // 💡 AUDIO & SOUND CONFIGURATION CONTROLS
 // ==========================================
 const AUDIO_CONFIG = {
-  BACKGROUND_VOLUME: 0.007, // 💡 Background music volume (0.0 to 1.0)
+  BACKGROUND_VOLUME: 0.01, // 💡 Background music volume (0.0 to 1.0)
   EFFECT1_VOLUME: 0.02,    // 💡 Tap sound volume (0.0 to 1.0)
   EFFECT2_VOLUME: 0.02   // 💡 Swipe sound volume (0.0 to 1.0)
 };
